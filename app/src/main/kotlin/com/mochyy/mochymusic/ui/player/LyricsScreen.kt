@@ -163,7 +163,7 @@ private class LyricsListPadding : PaddingValues {
     override fun calculateRightPadding(layoutDirection: LayoutDirection) = 0.dp
 }
 
-private const val ImmersiveDelayMs = 3_500L
+private const val ImmersiveDelayMs = 1_500L
 
 private const val RecenterDurationMs = 950
 
