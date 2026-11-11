@@ -115,7 +115,7 @@ fun SectionDetailScreen(
     ) {
         when (sectionId) {
             "speed_dial" -> speedDialItems.filterIsInstance<SongItem>()
-            "quick_picks" -> quickPicks?.filterIsInstance<Song>() ?: emptyList()
+            "quick_picks" -> quickPicks
             "forgotten_favorites" -> forgottenFavorites ?: emptyList()
             "history" -> keepListening?.filterIsInstance<Song>() ?: emptyList()
             "recently_played" -> recentlyPlayed ?: emptyList()

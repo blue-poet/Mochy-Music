@@ -192,6 +192,7 @@ import com.mochyy.mochymusic.ui.component.navigateToTab
 sealed class HomeSection(val id: String) {
     data object RecentlyPlayed : HomeSection("recently_played")
     data object MostPlayed : HomeSection("most_played")
+    data object QuickPicks : HomeSection("quick_picks")
     data object History : HomeSection("history")
     data object DontForgetTheseSongs : HomeSection("dont_forget_these_songs")
     data object AccountPlaylists : HomeSection("account_playlists")
@@ -665,6 +666,7 @@ fun HomeScreen(
         }
     }
     val homePage by viewModel.homePage.collectAsState()
+    val quickPicks by viewModel.quickPicks.collectAsState()
     val dailyDiscover by viewModel.dailyDiscover.collectAsState()
     val similarRecommendations by viewModel.similarRecommendations.collectAsState()
     val communityPlaylists by viewModel.communityPlaylists.collectAsState()
@@ -707,7 +709,8 @@ fun HomeScreen(
     }
 
     val startListeningGridState = rememberTrackGridState()
-    val quickPicksLazyGridState = rememberTrackGridState()
+    val mostPlayedLazyGridState = rememberTrackGridState()
+    val quickPicksGridState = rememberTrackGridState()
     val forgottenFavoritesLazyGridState = rememberTrackGridState()
     val homeStyle by rememberEnumPreference(HomeStyleKey, defaultValue = HomeStyle.MOCHYY)
 
@@ -1113,6 +1116,34 @@ fun HomeScreen(
         )
     }
 
+    val youtubeTrackRow: @Composable (Int, SongItem) -> Unit = { _, song ->
+        val showMenu = {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            menuState.show {
+                YouTubeSongMenu(
+                    song = song,
+                    navController = navController,
+                    onDismiss = menuState::dismiss,
+                )
+            }
+        }
+        HomeTrackRow(
+            thumbnailUrl = song.thumbnail,
+            songId = song.id,
+            title = song.title,
+            subtitle = song.artists.joinToString(", ") { it.name },
+            isActive = song.id == mediaMetadataState.value?.id,
+            isPlaying = isPlayingNow,
+            onClick = {
+                playerConnection.playQueue(
+                    YouTubeQueue(song.endpoint ?: WatchEndpoint(videoId = song.id), song.toMediaMetadata())
+                )
+            },
+            onLongClick = showMenu,
+            onMoreClick = showMenu,
+        )
+    }
+
     val trackRow: @Composable (Int, Song) -> Unit = { _, song ->
         HomeTrackRow(
             thumbnailUrl = song.song.thumbnailUrl,
@@ -1141,44 +1172,38 @@ fun HomeScreen(
                     nextCategory++
                 }
             }
-
-            if (recentlyPlayed?.isNotEmpty() == true) list.add(HomeSection.RecentlyPlayed)
-            if (mostPlayedSongsForHome?.isNotEmpty() == true) list.add(HomeSection.MostPlayed)
-            addCategories()
-            if (communityPlaylists?.isNotEmpty() == true) list.add(HomeSection.FromTheCommunity)
-            if (speedDialItems.isNotEmpty()) list.add(HomeSection.SpeedDial)
-            if (recentHistorySongs?.isNotEmpty() == true) list.add(HomeSection.History)
-            addCategories()
-            // the two video banners sit apart, so the big frames break the feed up instead of piling up
-            if (liveRow?.isNotEmpty() == true) list.add(HomeSection.LiveShows)
-            addCategories()
-            if (artistListItems?.isNotEmpty() == true) list.add(HomeSection.ArtistList)
-            addCategories()
-            if (accountPlaylists?.isNotEmpty() == true || localPlaylists?.isNotEmpty() == true) list.add(HomeSection.AccountPlaylists)
-            addCategories()
-            if (forgottenFavorites?.isNotEmpty() == true) list.add(HomeSection.DontForgetTheseSongs)
-            addCategories()
-            if (musicVideoRow?.isNotEmpty() == true) list.add(HomeSection.MusicVideos)
-            addCategories(categories.size)
-
             // YouTube's live and music video shelves already sit inside the rows above
             val homePageSections = homePage?.sections.orEmpty()
                 .mapIndexed { index, section -> index to section }
-                .filter { (index, _) ->
-                    feedVideoKinds[index] != FeedVideoKind.Live && feedVideoKinds[index] != FeedVideoKind.MusicVideos
+                .filter { (index, section) ->
+                    !viewModel.isYouTubeQuickPicks(section) &&
+                            feedVideoKinds[index] != FeedVideoKind.Live && feedVideoKinds[index] != FeedVideoKind.MusicVideos
                 }
             homePageSections.firstOrNull()?.let { (index, section) -> list.add(HomeSection.HomePageSection(index, section.title)) }
             if (allTimeHits?.isNotEmpty() == true) list.add(HomeSection.AllTimeHits)
             homePageSections.drop(1).forEach { (index, section) ->
                 list.add(HomeSection.HomePageSection(index, section.title))
             }
-
+            if (quickPicks.isNotEmpty()) list.add(HomeSection.QuickPicks)
+            addCategories()
+            if (communityPlaylists?.isNotEmpty() == true) list.add(HomeSection.FromTheCommunity)
+            if (speedDialItems.isNotEmpty()) list.add(HomeSection.SpeedDial)
+            if (forgottenFavorites?.isNotEmpty() == true) list.add(HomeSection.DontForgetTheseSongs)
+            addCategories()
+            // the two video banners sit apart, so the big frames break the feed up instead of piling up
+            if (liveRow?.isNotEmpty() == true) list.add(HomeSection.LiveShows)
+            addCategories()
+            if (artistListItems?.isNotEmpty() == true) list.add(HomeSection.ArtistList)
+            addCategories()
+            if (musicVideoRow?.isNotEmpty() == true) list.add(HomeSection.MusicVideos)
+            addCategories(categories.size)
+            if (recentHistorySongs?.isNotEmpty() == true) list.add(HomeSection.History)
             list
         }
     }
 
     LaunchedEffect(mostPlayedSongsForHome) {
-        quickPicksLazyGridState.scrollToItem(0)
+        mostPlayedLazyGridState.scrollToItem(0)
     }
 
     LaunchedEffect(forgottenFavorites) {
@@ -1432,6 +1457,24 @@ fun HomeScreen(
                                 }
                             }
                         }
+                        HomeSection.QuickPicks -> {
+                            homeItem("quick_picks_title", revealSeen, "title") {
+                                HomeSectionTitle(
+                                    title = stringResource(R.string.quick_picks),
+                                    onClick = { navController.navigate("section_detail/quick_picks") },
+                                )
+                            }
+                            homeItem("quick_picks_list", revealSeen, "trackGrid") {
+                                HomeTrackGrid(
+                                    items = quickPicks,
+                                    state = quickPicksGridState,
+                                    rowSpacing = 6.dp,
+                                    columnWidth = trackColumnWidth,
+                                    key = { _, song -> song.id },
+                                    content = youtubeTrackRow,
+                                )
+                            }
+                        }
                         HomeSection.MostPlayed -> {
                             mostPlayedSongsForHome?.takeIf { it.isNotEmpty() }?.let { mostPlayed ->
                                 homeItem("most_played_title", revealSeen, "title") {
@@ -1443,7 +1486,7 @@ fun HomeScreen(
                                 homeItem("most_played_list", revealSeen, "trackGrid") {
                                     HomeTrackGrid(
                                         items = mostPlayed,
-                                        state = quickPicksLazyGridState,
+                                        state = mostPlayedLazyGridState,
                                         rowSpacing = 6.dp,
                                         columnWidth = trackColumnWidth,
                                         key = { _, song -> song.id },

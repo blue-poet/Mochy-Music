@@ -111,11 +111,11 @@ class HomeViewModel @Inject constructor(
     val isLoading = MutableStateFlow(false)
     val isRandomizing = MutableStateFlow(false)
 
-    private val quickPicksEnum = context.dataStore.data.map {
+    private val localQuickPicksEnum = context.dataStore.data.map {
         it[QuickPicksKey].toEnum(QuickPicks.QUICK_PICKS)
     }.distinctUntilChanged()
 
-    val quickPicks = MutableStateFlow<List<LocalItem>?>(null)
+    val localQuickPicks = MutableStateFlow<List<LocalItem>?>(null)
     val dailyDiscover = MutableStateFlow<List<DailyDiscoverItem>?>(null)
     val forgottenFavorites = MutableStateFlow<List<Song>?>(null)
     val keepListening = MutableStateFlow<List<LocalItem>?>(null)
@@ -136,6 +136,18 @@ class HomeViewModel @Inject constructor(
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Lazily, emptyList())
     val homePage = MutableStateFlow<HomePage?>(null)
+
+    // YouTube's shelf is independent of the local history used to fill Speed Dial.
+    fun isYouTubeQuickPicks(section: HomePage.Section): Boolean =
+        section.title.trim().equals("Quick picks", ignoreCase = true) ||
+            section.title.trim().equals(context.getString(R.string.quick_picks), ignoreCase = true)
+
+    val quickPicks: StateFlow<List<SongItem>> = homePage.map { page ->
+        page?.sections.orEmpty()
+            .filter(::isYouTubeQuickPicks)
+            .flatMap { it.items.filterIsInstance<SongItem>() }
+            .distinctBy { it.id }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val explorePage = MutableStateFlow<ExplorePage?>(null)
     val communityPlaylists = MutableStateFlow<List<CommunityPlaylistItem>?>(null)
     val selectedChip = MutableStateFlow<HomePage.Chip?>(null)
@@ -225,7 +237,7 @@ class HomeViewModel @Inject constructor(
         combine(
             database.speedDialDao.getAll(),
             keepListening,
-            quickPicks
+            localQuickPicks
         ) { pinned, keepListening, quick ->
             val pinnedItems = pinned.map { it.toYTItem() }
             val filled = pinnedItems.toMutableList()
@@ -315,7 +327,7 @@ class HomeViewModel @Inject constructor(
             val userSongs = mutableListOf<YTItem>()
             val otherSources = mutableListOf<YTItem>()
 
-            quickPicks.value?.let { items ->
+            localQuickPicks.value?.let { items ->
                 items.forEach { item ->
                     when (item) {
                         is Song -> userSongs.add(SongItem(
@@ -468,7 +480,7 @@ class HomeViewModel @Inject constructor(
 
     private suspend fun getQuickPicks() {
         val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
-        when (quickPicksEnum.first()) {
+        when (localQuickPicksEnum.first()) {
             QuickPicks.QUICK_PICKS -> {
                 val thirtyDaysAgo = System.currentTimeMillis() - 86400000L * 30L
                 val topSongs = database.mostPlayedSongs(fromTimeStamp = thirtyDaysAgo, limit = 20)
@@ -476,13 +488,13 @@ class HomeViewModel @Inject constructor(
                     .filterVideoSongs(hideVideoSongs)
                     .filterNot { it.id in NotRecommended }
 
-                quickPicks.value = topSongs.distinctBy { it.id }.take(20)
+                localQuickPicks.value = topSongs.distinctBy { it.id }.take(20)
             }
             QuickPicks.LAST_LISTEN -> {
                 val song = database.recentEvents(1).first().firstOrNull()?.song
                 if (song != null && database.hasRelatedSongs(song.id)) {
                     val hideAi = hidesAi()
-                    quickPicks.value = database.getRelatedSongs(song.id).first().filterVideoSongs(hideVideoSongs)
+                    localQuickPicks.value = database.getRelatedSongs(song.id).first().filterVideoSongs(hideVideoSongs)
                         .filterNot { it.id in NotRecommended || (hideAi && it.looksAiGenerated()) }.shuffled().take(20)
                 }
             }
@@ -776,7 +788,7 @@ class HomeViewModel @Inject constructor(
 
         localPlaylists.value = playlists.distinctBy { it.id }
 
-        allLocalItems.value = (quickPicks.value.orEmpty() + forgottenFavorites.value.orEmpty() + keepListening.value.orEmpty())
+        allLocalItems.value = (localQuickPicks.value.orEmpty() + forgottenFavorites.value.orEmpty() + keepListening.value.orEmpty())
             .filter { it is Song || it is Album || it is com.mochyy.mochymusic.db.entities.Playlist }
     }
 
