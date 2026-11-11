@@ -86,6 +86,10 @@ object ArtistVideos {
      * fold into those rather than showing twice.
      */
     fun feedShelfKind(title: String, items: List<YTItem>): FeedVideoKind? {
+        // Named video shelves can also come from cached pages without video-type metadata.
+        if (items.isNotEmpty() && items.all { it is SongItem } &&
+            MusicVideoShelfTitle.containsMatchIn(title) && !LiveShelfTitle.containsMatchIn(title)
+        ) return FeedVideoKind.MusicVideos
         val videos = items.count { it is SongItem && isVideo(it) }
         if (videos == 0 || videos * 4 < items.size * 3) return null
         return when {

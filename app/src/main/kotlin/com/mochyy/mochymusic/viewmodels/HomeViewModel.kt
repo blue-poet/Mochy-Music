@@ -201,8 +201,14 @@ class HomeViewModel @Inject constructor(
         ArtistVideos.merge(own, feedVideos(page, kinds, FeedVideoKind.Live))
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    val musicVideoRow: StateFlow<List<HomeVideo>?> = combine(musicVideos, homePage, feedVideoKinds) { own, page, kinds ->
-        ArtistVideos.merge(own, feedVideos(page, kinds, FeedVideoKind.MusicVideos))
+    // Only YouTube Home feed videos; the artist-derived recommendations do not fill this row.
+    val musicVideoRow: StateFlow<List<HomeVideo>?> = homePage.map { page ->
+        page?.sections.orEmpty()
+            .filter { ArtistVideos.feedShelfKind(it.title, it.items) == FeedVideoKind.MusicVideos }
+            .flatMap { it.items.filterIsInstance<SongItem>() }
+            .distinctBy { it.id }
+            .map(ArtistVideos::feedVideo)
+            .ifEmpty { null }
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private fun feedVideos(page: HomePage?, kinds: Map<Int, FeedVideoKind>, kind: FeedVideoKind): List<HomeVideo> =

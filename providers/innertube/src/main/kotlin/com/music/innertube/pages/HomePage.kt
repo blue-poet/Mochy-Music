@@ -96,6 +96,7 @@ data class HomePage(
                                 )
                             },
                             duration = null,
+                            musicVideoType = renderer.musicVideoType,
                             thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl()
                                 ?: return null,
                             explicit = renderer.subtitleBadges?.any {

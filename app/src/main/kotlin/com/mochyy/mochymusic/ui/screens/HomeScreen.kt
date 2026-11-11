@@ -269,6 +269,7 @@ private fun <T> HomeTrackGrid(
     state: LazyGridState,
     rowSpacing: Dp,
     columnWidth: Dp,
+    minRowHeight: Dp = 0.dp,
     key: (Int, T) -> Any,
     content: @Composable (index: Int, item: T) -> Unit,
 ) {
@@ -285,7 +286,7 @@ private fun <T> HomeTrackGrid(
         verticalArrangement = Arrangement.spacedBy(rowSpacing),
         modifier = Modifier
             .fillMaxWidth()
-            .height(homeRowHeight() * rows + rowSpacing * (rows - 1)),
+            .height(maxOf(homeRowHeight(), minRowHeight) * rows + rowSpacing * (rows - 1)),
     ) {
         itemsIndexed(items = items, key = key) { index, item ->
             Box(modifier = Modifier.width(columnWidth)) {
@@ -677,7 +678,6 @@ fun HomeScreen(
     val allTimeHits by viewModel.allTimeHits.collectAsState()
     val liveRow by viewModel.liveRow.collectAsState()
     val musicVideoRow by viewModel.musicVideoRow.collectAsState()
-    val feedVideoKinds by viewModel.feedVideoKinds.collectAsState()
     val feedVideoRows by viewModel.feedVideoRows.collectAsState()
     val homeCategories by viewModel.homeCategories.collectAsState()
 
@@ -1129,6 +1129,7 @@ fun HomeScreen(
         }
         HomeTrackRow(
             thumbnailUrl = song.thumbnail,
+            thumbnailSize = 75.dp,
             songId = song.id,
             title = song.title,
             subtitle = song.artists.joinToString(", ") { it.name },
@@ -1162,41 +1163,27 @@ fun HomeScreen(
         derivedStateOf {
             val list = mutableListOf<HomeSection>()
 
-            // the recommendation rows are dealt out between Home's own rows, the way Apple Music
-            // and Spotify mix "because you like" shelves in with your history
-            val categories = homeCategories.orEmpty()
-            var nextCategory = 0
-            fun addCategories(count: Int = 1) = repeat(count) {
-                categories.getOrNull(nextCategory)?.let {
-                    list.add(HomeSection.Category(it.id))
-                    nextCategory++
-                }
-            }
             // YouTube's live and music video shelves already sit inside the rows above
             val homePageSections = homePage?.sections.orEmpty()
                 .mapIndexed { index, section -> index to section }
-                .filter { (index, section) ->
+                .filter { (_, section) ->
+                    val videoKind = com.mochyy.mochymusic.utils.ArtistVideos.feedShelfKind(section.title, section.items)
                     !viewModel.isYouTubeQuickPicks(section) &&
-                            feedVideoKinds[index] != FeedVideoKind.Live && feedVideoKinds[index] != FeedVideoKind.MusicVideos
+                        videoKind != FeedVideoKind.Live && videoKind != FeedVideoKind.MusicVideos
                 }
             homePageSections.firstOrNull()?.let { (index, section) -> list.add(HomeSection.HomePageSection(index, section.title)) }
+            if (quickPicks.isNotEmpty()) list.add(HomeSection.QuickPicks)
+            if (communityPlaylists?.isNotEmpty() == true) list.add(HomeSection.FromTheCommunity)
+            if (speedDialItems.isNotEmpty()) list.add(HomeSection.SpeedDial)
+            if (forgottenFavorites?.isNotEmpty() == true) list.add(HomeSection.DontForgetTheseSongs)
             if (allTimeHits?.isNotEmpty() == true) list.add(HomeSection.AllTimeHits)
             homePageSections.drop(1).forEach { (index, section) ->
                 list.add(HomeSection.HomePageSection(index, section.title))
             }
-            if (quickPicks.isNotEmpty()) list.add(HomeSection.QuickPicks)
-            addCategories()
-            if (communityPlaylists?.isNotEmpty() == true) list.add(HomeSection.FromTheCommunity)
-            if (speedDialItems.isNotEmpty()) list.add(HomeSection.SpeedDial)
-            if (forgottenFavorites?.isNotEmpty() == true) list.add(HomeSection.DontForgetTheseSongs)
-            addCategories()
             // the two video banners sit apart, so the big frames break the feed up instead of piling up
             if (liveRow?.isNotEmpty() == true) list.add(HomeSection.LiveShows)
-            addCategories()
             if (artistListItems?.isNotEmpty() == true) list.add(HomeSection.ArtistList)
-            addCategories()
             if (musicVideoRow?.isNotEmpty() == true) list.add(HomeSection.MusicVideos)
-            addCategories(categories.size)
             if (recentHistorySongs?.isNotEmpty() == true) list.add(HomeSection.History)
             list
         }
@@ -1240,6 +1227,8 @@ fun HomeScreen(
         ) {
             // a song column is 304 of 401 in the Figma, so the next one peeks in from the edge
             val trackColumnWidth = if (maxWidth * 0.475f >= 320.dp) maxWidth * 0.475f else maxWidth * 0.76f
+            // Leave at least 28dp of the next column visible after the inset and column gap.
+            val quickPicksColumnWidth = minOf(trackColumnWidth, maxWidth - HomeContentInset - 39.dp - 28.dp)
             // a video banner is 314 of 402, so the next one peeks in the same way
             val videoCardWidth = minOf(maxWidth * 0.78f, 340.dp)
             val videoRowCard: @Composable (HomeVideo) -> Unit = { video -> videoCard(video, videoCardWidth) }
@@ -1468,8 +1457,9 @@ fun HomeScreen(
                                 HomeTrackGrid(
                                     items = quickPicks,
                                     state = quickPicksGridState,
-                                    rowSpacing = 6.dp,
-                                    columnWidth = trackColumnWidth,
+                                    rowSpacing = 14.dp,
+                                    columnWidth = quickPicksColumnWidth,
+                                    minRowHeight = 75.dp,
                                     key = { _, song -> song.id },
                                     content = youtubeTrackRow,
                                 )

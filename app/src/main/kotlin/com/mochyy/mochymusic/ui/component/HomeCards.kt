@@ -45,15 +45,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
-import com.mochyy.mochymusic.LocalGridItemSize
 import com.mochyy.mochymusic.R
-import com.mochyy.mochymusic.constants.GridItemSize
 import com.mochyy.mochymusic.ui.theme.InterFontFamily
 import coil3.compose.AsyncImage
 
 // spacing and type straight from the Figma home frames (13:11 / 14:212)
 val HomeContentInset = 36.dp
-val HomeCardSpacing = 15.dp
+val HomeCardSpacing = 20.dp
 
 private val HomeTracking = (-0.06).em
 
@@ -120,10 +118,9 @@ private val TrackRowHighlight = RoundedHighlight(cornerRadius = 22.dp, spillX = 
 /** for the cover cards: a little bigger than the card all round, cornered to match */
 val HomeCardHighlight = RoundedHighlight(cornerRadius = HomeCardCornerRadius + 6.dp, spillX = 7.dp, spillY = 7.dp)
 
-/** square cover size on Home: the Figma 137dp card, or the compact size if the user picked small grids */
+/** Square album, playlist and song cover size on Home. */
 @Composable
-fun homeCardSize(): Dp =
-    if (LocalGridItemSize.current == GridItemSize.BIG) 137.dp else 104.dp
+fun homeCardSize(): Dp = 154.dp
 
 /**
  * "Recently Played >" style header. the whole line is the tap target, so pressing it lights a
@@ -403,9 +400,10 @@ fun HomeTrackRow(
     coverModifier: Modifier = Modifier,
     /** A song's id: marks the row when the song is downloaded or an imported file. */
     songId: String? = null,
+    thumbnailSize: Dp = HomeRowHeight,
 ) = HomeTrackRow(
     thumbnailUrl, title, subtitle, isActive, { isPlaying }, onClick, onLongClick, onMoreClick, modifier,
-    rank, coverShape, coverModifier, songId,
+    rank, coverShape, coverModifier, songId, thumbnailSize,
 )
 
 // isPlaying is read only inside the cover's indicator, so a play or pause doesn't recompose every row
@@ -425,11 +423,12 @@ fun HomeTrackRow(
     coverShape: Shape = RoundedCornerShape((HomeCardCornerRadius * 0.56f).coerceIn(0.dp, 20.dp)),
     coverModifier: Modifier = Modifier,
     songId: String? = null,
+    thumbnailSize: Dp = HomeRowHeight,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
-            .height(homeRowHeight())
+            .height(maxOf(homeRowHeight(), thumbnailSize))
             .combinedClickable(
                 interactionSource = null,
                 indication = TrackRowHighlight,
@@ -448,7 +447,7 @@ fun HomeTrackRow(
         }
         Box(
             modifier = coverModifier
-                .size(HomeRowHeight)
+                .size(thumbnailSize)
                 .clip(coverShape)
                 .background(BoneColor),
         ) {
